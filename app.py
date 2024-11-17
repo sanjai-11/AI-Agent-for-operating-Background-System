@@ -2,8 +2,11 @@ from flask import Flask, render_template, request, redirect
 import google.generativeai as genai
 import os
 import json
-from database import init_db, fetch_records, backend  # Import database functions
+from database import db_manager  # # Import database functions
 from difflib import get_close_matches
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -38,8 +41,9 @@ class BackendAgent:
             key = sanitize_input(output.get('key'))
             value = sanitize_input(output.get('value'))
 
-            action = correct_typo(action, valid_actions)
-            backend(action, key, value)
+            # Correct typos only if action, key, or value are not None
+            action = correct_typo(action, valid_actions) if action else action
+            db_manager.backend(action, key, value)
 
         elif isinstance(output, list):  # Multiple operations
             for operation in output:
@@ -47,65 +51,48 @@ class BackendAgent:
                 key = sanitize_input(operation.get('key'))
                 value = sanitize_input(operation.get('value'))
 
-                # Ensure typo correction and process each operation
                 action = correct_typo(action, valid_actions) if action else action
-                backend(action, key, value)
+                db_manager.backend(action, key, value)
 
 
-    @staticmethod
-    @app.route('/', methods=['GET', 'POST'])
-    def index():
-        agent = BackendAgent()  # Create an instance of BackendAgent
-        if request.method == 'POST':
-            # Get natural language prompt from user
-            prompt = request.form['prompt']
+backend_agent = BackendAgent()
 
-            # Generate structured output from Gemini model
-            total_prompt = f"""
-            Please extract the action word, key, and value from the following input. Provide the output exactly in the JSON format specified and do not include any additional information.
-            Input: {prompt}"""
-            response = agent.model.generate_content(total_prompt)
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    agent = BackendAgent()  # Create an instance of BackendAgent
+    if request.method == 'POST':
+        # Get natural language prompt from user
+        prompt = request.form['prompt']
 
-            json_text = response.text  # Get the response from the model
-            if json_text.startswith("```json"):
-                json_text = json_text.lstrip("```json").rstrip("```").strip()
+        # Generate structured output from Gemini model
+        total_prompt = f"""
+        Please extract the action word, key, and value from the following input. Provide the output exactly in the JSON file specified and do not include any additional information.
 
-            try:
-                json_object = json.loads(json_text)
-                agent.process_gemini_output(json_object)  # Process the structured JSON output
-            except json.JSONDecodeError as e:
-                print("JSONDecodeError:", e)
-                print("Invalid JSON:", json_text)
-                return redirect('/')
-            
-            """total_prompt = f"""
-            #Please extract the action word, key, and value from the following input. Provide the output exactly in the JSON file specified and do not include any additional information.
+        Input: {prompt}
+        """
+        response = agent.model.generate_content(total_prompt)
 
-            #Input: {prompt}
-            """
-            response = agent.model.generate_content(total_prompt)
+        json_text = response.text  # Replace this with your actual response
 
-            json_text = response.text  # Replace this with your actual response
+        if json_text.startswith("```json"):
+            json_text = json_text.lstrip("```json").rstrip("```").strip()
 
-            if json_text.startswith("```json"):
-                json_text = json_text.lstrip("```json").rstrip("```").strip()
-
-            try:
-                json_object = json.loads(json_text)
-            except json.JSONDecodeError as e:
-                print("JSONDecodeError:", e)
-                print("Invalid JSON:", json_text)
-                return redirect('/')"""
-
-            print(json_object)
-            agent.process_gemini_output(json_object)
-
+        try:
+            json_object = json.loads(json_text)
+        except json.JSONDecodeError as e:
+            print("JSONDecodeError:", e)
+            print("Invalid JSON:", json_text)
             return redirect('/')
 
-        # Fetch and display records
-        records = fetch_records()
-        return render_template('home.html', records=records)
+        print(json_object)
+
+        backend_agent.process_gemini_output(json_object)
+
+        return redirect('/')
+
+    # Fetch and display records
+    records = db_manager.fetch_records()
+    return render_template('home.html', records=records)
 
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)

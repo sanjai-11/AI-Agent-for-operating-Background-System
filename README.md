@@ -14,7 +14,7 @@ This project is an AI-powered backend automation agent that leverages Google Gem
   * Large Language Model (LLM) – Google Gemini-pro
   * Backend Framework – Flask
   * Database – SQLit
-  * API Development – RESTful AP
+  * API Development – RESTful API
   * Task Handling – Multi-threading for concurrent processing
 
 ### How It Works
